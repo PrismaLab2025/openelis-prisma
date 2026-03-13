@@ -44,30 +44,34 @@ public class PrismaOrderService {
     @Autowired private TypeOfSampleService typeOfSampleService;
 
     public PrismaOrderResponse processOrder(PrismaOrderRequest req) throws Exception {
+        // 1. Find or create patient
         Patient patient = findOrCreatePatient(req);
 
+        // 2. Create Sample
         Sample sample = new Sample();
         sample.setAccessionNumber(generateAccessionNumber());
-        sample.setEnteredDate(new java.sql.Date(new Date().getTime()));
         sample.setStatus("O");
         sample.setSysUserId("1");
         sample = sampleService.save(sample);
 
+        // 3. Link patient to sample
         SampleHuman sampleHuman = new SampleHuman();
         sampleHuman.setSampleId(sample.getId());
         sampleHuman.setPatientId(patient.getId());
         sampleHuman.setSysUserId("1");
         sampleHumanService.save(sampleHuman);
 
+        // 4. Create SampleItem
         TypeOfSample typeOfSample = findSampleType(req.getSampleType());
         SampleItem sampleItem = new SampleItem();
         sampleItem.setSample(sample);
         sampleItem.setTypeOfSample(typeOfSample);
         sampleItem.setSortOrder("1");
-        sampleItem.setStatus("O");
+        sampleItem.setStatusId("O");
         sampleItem.setSysUserId("1");
         sampleItem = sampleItemService.save(sampleItem);
 
+        // 5. Create Analysis per test
         if (req.getTestIds() != null) {
             for (String testId : req.getTestIds()) {
                 Test test = testService.getTestById(testId);
@@ -93,10 +97,14 @@ public class PrismaOrderService {
 
     @Transactional(readOnly = true)
     public PrismaResultResponse getResults(String accessionNumber) {
-        Sample sample = sampleService.getSampleByAccessionNumber(accessionNumber);
-        if (sample == null) return null;
+        // Find sample by accession number
+        Sample sampleQuery = new Sample();
+        sampleQuery.setAccessionNumber(accessionNumber);
+        sampleService.getSampleByAccessionNumber(sampleQuery);
 
-        List<SampleItem> sampleItems = sampleItemService.getSampleItemsBySampleId(sample.getId());
+        if (sampleQuery.getId() == null) return null;
+
+        List<SampleItem> sampleItems = sampleItemService.getSampleItemsBySampleId(sampleQuery.getId());
         List<PrismaResultResponse.TestResult> results = new ArrayList<>();
 
         for (SampleItem item : sampleItems) {
@@ -119,12 +127,18 @@ public class PrismaOrderService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> getOrderStatus(String accessionNumber) {
-        Sample sample = sampleService.getSampleByAccessionNumber(accessionNumber);
+        Sample sampleQuery = new Sample();
+        sampleQuery.setAccessionNumber(accessionNumber);
+        sampleService.getSampleByAccessionNumber(sampleQuery);
+
         Map<String, Object> status = new HashMap<>();
-        if (sample == null) { status.put("found", false); return status; }
+        if (sampleQuery.getId() == null) {
+            status.put("found", false);
+            return status;
+        }
         status.put("found", true);
         status.put("accessionNumber", accessionNumber);
-        status.put("status", sample.getStatus());
+        status.put("status", sampleQuery.getStatus());
         return status;
     }
 
